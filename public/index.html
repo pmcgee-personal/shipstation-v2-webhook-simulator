@@ -4,33 +4,37 @@
     <meta charset="UTF-8">
     <title>ShipEngine Webhook Simulator</title>
     <style>
-        body { font-family: -apple-system, sans-serif; background: #f4f7f6; display: flex; justify-content: center; padding: 50px; }
+        body { font-family: -apple-system, sans-serif; background: #f4f7f6; display: flex; justify-content: center; padding: 40px; }
         .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 450px; }
         h2 { margin-top: 0; color: #333; border-bottom: 2px solid #eee; padding-bottom: 10px; }
         .field { margin-bottom: 20px; }
         label { display: block; font-size: 13px; font-weight: bold; margin-bottom: 8px; color: #555; }
         input, select { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
-        input:focus { border-color: #007bff; outline: none; box-shadow: 0 0 0 2px rgba(0,123,255,0.1); }
-        button { width: 100%; padding: 14px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px; transition: background 0.2s; }
+        button { width: 100%; padding: 14px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px; transition: 0.2s; }
         button:hover { background: #0056b3; }
-        button:disabled { background: #ccc; cursor: not- adolescence; }
-        #status-box { margin-top: 20px; padding: 15px; border-radius: 6px; display: none; font-size: 14px; line-height: 1.4; white-space: pre-wrap; font-family: monospace; }
-        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        
+        /* History Styles */
+        #history-section { margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; }
+        .history-item { font-size: 12px; padding: 10px; border-bottom: 1px solid #f9f9f9; display: flex; justify-content: space-between; align-items: center; }
+        .history-item:last-child { border-bottom: none; }
+        .tag { padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 10px; text-transform: uppercase; }
+        .tag-success { background: #e6fffa; color: #2d3748; border: 1px solid #b2f5ea; }
+        .tag-error { background: #fff5f5; color: #c53030; border: 1px solid #feb2b2; }
     </style>
 </head>
 <body>
     <div class="card">
-        <h2>📦 Webhook Simulator</h2>
+        <h2>📦 ShipStation API Tracking Webhook Simulator</h2>
         
         <div class="field">
-            <label>Webhook.site URL</label>
+            <label>Webhook URL</label>
             <input type="text" id="target_url" placeholder="https://webhook.site/...">
         </div>
 
         <div class="field">
             <label>Tracking Number</label>
-            <input type="text" id="tracking_number" placeholder="Enter tracking number..." value="399933278930">
+            <input type="text" id="tracking_number" value="SIM-99440022">
         </div>
 
         <div class="field">
@@ -52,51 +56,68 @@
         </div>
 
         <button id="fire-btn" onclick="fire()">Fire Webhook 🔥</button>
-        <div id="status-box"></div>
+
+        <div id="history-section">
+            <label>Recent Activity</label>
+            <div id="history-list">
+                <em style="font-size: 12px; color: #999;">No webhooks fired yet this session.</em>
+            </div>
+        </div>
     </div>
 
     <script>
+        // Refresh history when page loads
+        window.onload = refreshHistory;
+
+        async function refreshHistory() {
+            const list = document.getElementById('history-list');
+            try {
+                const response = await fetch('/history');
+                const history = await response.json();
+                
+                if (history.length > 0) {
+                    list.innerHTML = history.map(h => `
+                        <div class="history-item">
+                            <div>
+                                <strong>${h.timestamp}</strong><br>
+                                ${h.carrier.toUpperCase()} (${h.status}) - ${h.tracking_number}
+                            </div>
+                            <span class="tag ${h.success ? 'tag-success' : 'tag-error'}">
+                                ${h.success ? 'Sent' : 'Failed'}
+                            </span>
+                        </div>
+                    `).join('');
+                }
+            } catch (e) {
+                console.error("Could not fetch history", e);
+            }
+        }
+
         async function fire() {
-            const box = document.getElementById('status-box');
             const btn = document.getElementById('fire-btn');
-            
-            const payload = {
+            const data = {
                 target_url: document.getElementById('target_url').value,
                 carrier: document.getElementById('carrier').value,
                 tracking_number: document.getElementById('tracking_number').value,
                 status: document.getElementById('status').value
             };
 
-            if (!payload.target_url) {
-                alert("Please enter your Webhook.site URL first!");
-                return;
-            }
+            if (!data.target_url) return alert("Missing Webhook.site URL");
 
             btn.disabled = true;
-            box.style.display = 'none';
 
             try {
-                const response = await fetch('/simulate', {
+                await fetch('/simulate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(data)
                 });
-                
-                const result = await response.json();
-
-                if (response.ok) {
-                    box.className = 'status-box success';
-                    box.innerText = `✅ Success!\nCarrier: ${payload.carrier}\nStatus: ${payload.status}\nTracking: ${payload.tracking_number}`;
-                } else {
-                    box.className = 'status-box error';
-                    box.innerText = `❌ Error: ${result.error}\n${result.details || ''}`;
-                }
             } catch (e) {
-                box.className = 'status-box error';
-                box.innerText = "❌ Connection failed. Is the server running?";
+                console.error(e);
             } finally {
-                box.style.display = 'block';
                 btn.disabled = false;
+                // Wait a tiny bit for the server to update the array, then refresh UI
+                setTimeout(refreshHistory, 200);
             }
         }
     </script>
