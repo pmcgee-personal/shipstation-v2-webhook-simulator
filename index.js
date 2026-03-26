@@ -2,36 +2,50 @@ const express = require('express');
 const axios = require('axios');
 const { subHours, formatISO } = require('date-fns');
 const fs = require('fs');
+const path = require('path');
 
 const app = express();
-app.use(express.json());
 
+// 1. Middlewares
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+// 2. Route to serve the Dashboard (index.html)
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// 3. The Simulation Logic
 app.post('/simulate', async (req, res) => {
     const { target_url, carrier, tracking_number, status } = req.body;
 
-    // 1. Load the carrier template
+    // Load the carrier template
     const templatePath = `./payloads/${carrier}.json`;
     if (!fs.existsSync(templatePath)) {
         return res.status(400).json({ error: `Template for ${carrier} not found.` });
     }
-    const template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
+    
+    let template;
+    try {
+        template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
+    } catch (e) {
+        return res.status(500).json({ error: "Failed to parse template JSON" });
+    }
 
-    // 2. Find where the requested status is in our event list
+    // Find where the requested status is in our event list
     const startIndex = template.data.events.findIndex(e => e.status_code === status);
     if (startIndex === -1) {
         return res.status(400).json({ error: `Status ${status} not found for ${carrier}.` });
     }
 
-    // 3. Slice history (Show only events up to the chosen status)
+    // Process events and dates
     const historyEvents = template.data.events.slice(startIndex);
     const now = new Date();
     const mostRecentOffset = historyEvents[0].hour_offset;
 
-    // 4. Process individual events (Inject timestamps & keep metadata)
     const processedEvents = historyEvents.map(event => {
         const hoursDiff = Math.abs(event.hour_offset - mostRecentOffset);
         const eventTime = subHours(now, hoursDiff);
-
         const { hour_offset, ...cleanEvent } = event;
 
         return {
@@ -42,18 +56,12 @@ app.post('/simulate', async (req, res) => {
         };
     });
 
-    // 5. Date Logic: Ship Date & Estimated vs Actual Delivery
     const isDelivered = (status === 'DE');
-    
-    // Calculate Ship Date (Looking for the 'AC' event)
     const shipEvent = template.data.events.find(e => e.status_code === 'AC') || historyEvents[historyEvents.length - 1];
-    const shipHoursDiff = Math.abs(shipEvent.hour_offset - mostRecentOffset);
-    const shipDate = subHours(now, shipHoursDiff);
-
-    // If not delivered, set estimate to 24 hours in the future
+    const shipDate = subHours(now, Math.abs(shipEvent.hour_offset - mostRecentOffset));
     const estimatedDelivery = !isDelivered ? subHours(now, -24) : null;
 
-    // 6. Final Payload Assembly
+    // Build the Final Webhook Payload
     const finalPayload = {
         resource_url: `https://api.shipengine.com/v1/tracking?carrier_code=${carrier}&tracking_number=${tracking_number}`,
         resource_type: "API_TRACK",
@@ -71,10 +79,10 @@ app.post('/simulate', async (req, res) => {
         }
     };
 
-    // 7. Push Webhook with ShipEngine Signature Headers
+    // Push Webhook with ShipEngine Signature Headers
     try {
-        console.log(`\n--- Sending Webhook ---`);
-        console.log(`Target: ${target_url} | Status: ${status}`);
+        console.log(`\n--- Pushing Webhook ---`);
+        console.log(`Carrier: ${carrier} | Status: ${status}`);
         
         await axios.post(target_url, finalPayload, {
             timeout: 5000,
@@ -86,8 +94,7 @@ app.post('/simulate', async (req, res) => {
             }
         });
 
-        console.log(`✅ Webhook Delivered Successfully`);
-        res.status(200).json({ message: "Simulation Successful", sent_payload: finalPayload });
+        res.status(200).json({ message: "Simulation Successful", webhook_status: 200 });
     } catch (error) {
         console.error(`❌ Webhook Failed: ${error.message}`);
         res.status(500).json({ error: "Delivery failed", details: error.message });
@@ -95,4 +102,7 @@ app.post('/simulate', async (req, res) => {
 });
 
 const PORT = 3000;
-app.listen(PORT, () => console.log(`Simulator active at http://localhost:${PORT}`));
+app.listen(PORT, () => {
+    console.log(`\n🚀 Simulator running at http://localhost:${PORT}`);
+    console.log(`📁 Serving dashboard from: ${path.join(__dirname, 'public')}`);
+});
