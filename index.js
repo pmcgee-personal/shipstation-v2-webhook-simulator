@@ -7,49 +7,55 @@ const app = express();
 app.use(express.json());
 
 app.post('/simulate', async (req, res) => {
-    // These 4 fields are what the user provides in the request
     const { target_url, carrier, tracking_number, status } = req.body;
 
-    // 1. Load the template (e.g., payloads/fedex.json)
+    // 1. Basic validation of input
+    if (!target_url || !carrier || !tracking_number || !status) {
+        return res.status(400).json({ error: "Missing required fields: target_url, carrier, tracking_number, or status" });
+    }
+
+    // 2. Load the template
     const templatePath = `./payloads/${carrier}.json`;
     if (!fs.existsSync(templatePath)) {
-        return res.status(400).json({ error: `Template for ${carrier} not found.` });
+        return res.status(400).json({ error: `Template for ${carrier} not found in payloads/ folder.` });
     }
-    const template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
+    
+    let template;
+    try {
+        template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
+    } catch (e) {
+        return res.status(500).json({ error: "Failed to parse JSON template", details: e.message });
+    }
 
-    // 2. Find the index of the requested status (e.g., "DE" for Delivered)
+    // 3. Find the starting status index
     const startIndex = template.data.events.findIndex(e => e.status_code === status);
     if (startIndex === -1) {
-        return res.status(400).json({ error: `Status ${status} not found for ${carrier}.` });
+        return res.status(400).json({ error: `Status ${status} not found in the ${carrier} event list.` });
     }
 
-    // 3. Slice the history (includes everything from the status down to the end of the array)
+    // 4. Process events (Slice + Time Math + Clean)
     const historyEvents = template.data.events.slice(startIndex);
-
-    // 4. Update timestamps to "Real Time" and strip the internal 'hour_offset'
     const now = new Date();
     const mostRecentOffset = historyEvents[0].hour_offset;
 
     const processedEvents = historyEvents.map(event => {
-        // Calculate the difference in hours between this event and the "latest" one
         const hoursToSubtract = Math.abs(event.hour_offset - mostRecentOffset);
         const eventTime = subHours(now, hoursToSubtract);
 
-        // Destructure the event to REMOVE 'hour_offset' so it stays secret
+        // Strip the internal 'hour_offset' helper
         const { hour_offset, ...cleanEvent } = event;
 
         return {
             ...cleanEvent,
             occurred_at: formatISO(eventTime),
-            // ShipEngine uses a 'carrier_occurred_at' without the 'Z' (local time)
             carrier_occurred_at: formatISO(eventTime).split('Z')[0]
         };
     });
 
-    // 5. Assemble the final production-ready payload
+    // 5. Build the Final Webhook Payload
     const finalPayload = {
-        ...template,
-        resource_url: template.resource_url.replace('{{TRACKING_NUMBER}}', tracking_number),
+        resource_url: `https://api.shipengine.com/v1/tracking?carrier_code=${carrier}&tracking_number=${tracking_number}`,
+        resource_type: "API_TRACK",
         data: {
             ...template.data,
             tracking_number: tracking_number,
@@ -60,15 +66,38 @@ app.post('/simulate', async (req, res) => {
         }
     };
 
-    // 6. Push the webhook to the integrator
+    // 6. Push Webhook with Enhanced Error Handling
+    console.log(`\n--- New Simulation Request ---`);
+    console.log(`Target URL: ${target_url}`);
+    console.log(`Carrier: ${carrier} | Status: ${status}`);
+
     try {
-        console.log(`Pushing simulated ${status} webhook to ${target_url}...`);
-        await axios.post(target_url, finalPayload);
+        const response = await axios.post(target_url, finalPayload, {
+            timeout: 8000, // Wait up to 8 seconds
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        console.log(`✅ Webhook Delivered! Response Status: ${response.status}`);
+        
         res.status(200).json({ 
             message: "Simulation Successful!", 
+            webhook_status: response.status,
             sent_payload: finalPayload 
         });
     } catch (error) {
+        console.error(`❌ Webhook Delivery Failed!`);
+        
+        if (error.response) {
+            // The destination server (like Webhook.site) replied with an error (e.g., 404 or 500)
+            console.error(`Response Data:`, error.response.data);
+            console.error(`Response Status:`, error.response.status);
+        } else if (error.request) {
+            // The request was made but no response was received (Timeout or DNS issue)
+            console.error(`No response received from target URL. Check your internet or the URL.`);
+        } else {
+            console.error(`Error Message:`, error.message);
+        }
+
         res.status(500).json({ 
             error: "Webhook delivery failed", 
             details: error.message 
