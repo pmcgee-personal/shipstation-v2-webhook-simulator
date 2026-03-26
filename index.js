@@ -9,44 +9,51 @@ app.use(express.json());
 app.post('/simulate', async (req, res) => {
     const { target_url, carrier, tracking_number, status } = req.body;
 
+    // 1. Load the carrier template
     const templatePath = `./payloads/${carrier}.json`;
     if (!fs.existsSync(templatePath)) {
         return res.status(400).json({ error: `Template for ${carrier} not found.` });
     }
     const template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
 
-    // 1. Find target status
+    // 2. Find where the requested status is in our event list
     const startIndex = template.data.events.findIndex(e => e.status_code === status);
     if (startIndex === -1) {
-        return res.status(400).json({ error: `Status ${status} not found.` });
+        return res.status(400).json({ error: `Status ${status} not found for ${carrier}.` });
     }
 
-    // 2. Slice history (Newest to Oldest)
+    // 3. Slice history (Show only events up to the chosen status)
     const historyEvents = template.data.events.slice(startIndex);
     const now = new Date();
     const mostRecentOffset = historyEvents[0].hour_offset;
 
-    // 3. Map events with BOTH timestamps and original metadata
+    // 4. Process individual events (Inject timestamps & keep metadata)
     const processedEvents = historyEvents.map(event => {
         const hoursDiff = Math.abs(event.hour_offset - mostRecentOffset);
         const eventTime = subHours(now, hoursDiff);
 
-        // Remove the internal helper but keep everything else
         const { hour_offset, ...cleanEvent } = event;
 
         return {
             ...cleanEvent,
             occurred_at: formatISO(eventTime),
-            carrier_occurred_at: formatISO(eventTime).split('Z')[0]
+            carrier_occurred_at: formatISO(eventTime).split('Z')[0],
+            event_description: cleanEvent.description
         };
     });
 
-    // 4. Date Logic for Top Level Fields
+    // 5. Date Logic: Ship Date & Estimated vs Actual Delivery
+    const isDelivered = (status === 'DE');
+    
+    // Calculate Ship Date (Looking for the 'AC' event)
     const shipEvent = template.data.events.find(e => e.status_code === 'AC') || historyEvents[historyEvents.length - 1];
     const shipHoursDiff = Math.abs(shipEvent.hour_offset - mostRecentOffset);
     const shipDate = subHours(now, shipHoursDiff);
 
-    // 5. Final Assembly
+    // If not delivered, set estimate to 24 hours in the future
+    const estimatedDelivery = !isDelivered ? subHours(now, -24) : null;
+
+    // 6. Final Payload Assembly
     const finalPayload = {
         resource_url: `https://api.shipengine.com/v1/tracking?carrier_code=${carrier}&tracking_number=${tracking_number}`,
         resource_type: "API_TRACK",
@@ -58,14 +65,16 @@ app.post('/simulate', async (req, res) => {
             carrier_status_code: processedEvents[0].event_code,
             carrier_status_description: processedEvents[0].description,
             ship_date: formatISO(shipDate),
-            actual_delivery_date: status === 'DE' ? formatISO(now) : null,
+            estimated_delivery_date: estimatedDelivery ? formatISO(estimatedDelivery) : null,
+            actual_delivery_date: isDelivered ? formatISO(now) : null,
             events: processedEvents
         }
     };
 
-    // 6. Push Webhook with ShipEngine Signature Headers
+    // 7. Push Webhook with ShipEngine Signature Headers
     try {
-        console.log(`Pushing simulated ${status} to ${target_url}...`);
+        console.log(`\n--- Sending Webhook ---`);
+        console.log(`Target: ${target_url} | Status: ${status}`);
         
         await axios.post(target_url, finalPayload, {
             timeout: 5000,
@@ -77,6 +86,7 @@ app.post('/simulate', async (req, res) => {
             }
         });
 
+        console.log(`✅ Webhook Delivered Successfully`);
         res.status(200).json({ message: "Simulation Successful", sent_payload: finalPayload });
     } catch (error) {
         console.error(`❌ Webhook Failed: ${error.message}`);
@@ -84,4 +94,5 @@ app.post('/simulate', async (req, res) => {
     }
 });
 
-app.listen(3000, () => console.log('Simulator active on port 3000'));
+const PORT = 3000;
+app.listen(PORT, () => console.log(`Simulator active at http://localhost:${PORT}`));
