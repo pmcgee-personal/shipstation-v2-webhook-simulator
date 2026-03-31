@@ -1,6 +1,6 @@
-# ShipStation API Webhook Simulator 📦
+# ShipStation V2 Tracking Webhook Simulator 📦
 
-A lightweight Node.js utility designed to simulate high-fidelity ShipEngine (SSAPI) tracking webhooks. This tool allows developers to test tracking integrations for **FedEx, UPS, and USPS** without needing real-world tracking numbers or carrier API credentials.
+A lightweight Node.js utility designed to simulate high-fidelity ShipStation V2 tracking webhooks. This tool allows developers to test tracking integrations for **FedEx, UPS, and USPS** without needing real-world tracking numbers or carrier API credentials.
 
 ## 🚀 Features
 - **Multi-Carrier Support**: Pre-configured templates for FedEx, UPS, and USPS using authentic carrier event codes.
