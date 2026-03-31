@@ -1,11 +1,11 @@
 {
-  "name": "shipstation-api-tracking-simulator",
+  "name": "shipstation-v2-tracking-simulator",
   "version": "1.0.0",
-  "description": "",
+  "description": "V2 Companion API tracking web hook",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-"dev": "nodemon index.js"
+    "dev": "nodemon index.js"
   },
   "keywords": [],
   "author": "",

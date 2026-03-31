@@ -69,8 +69,8 @@ app.post('/simulate', async (req, res) => {
 
     // 5. Final Webhook Payload Assembly (SSAPI Compliant)
     const finalPayload = {
-        resource_url: `https://api.shipengine.com/v1/tracking?carrier_code=${carrier}&tracking_number=${tracking_number}`,
-        resource_type: "API_TRACK",
+        resource_url: `https://api.shipstatione.com/v2/labels/se-622835583/track`,
+        resource_type: "TRACK_EVENT_V2",
         data: {
             ...template.data,
             tracking_number: tracking_number,
