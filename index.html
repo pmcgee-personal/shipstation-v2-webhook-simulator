@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ShipStation Webhook Simulator (Signed)</title>
+    <title>ShipStation V2 Webhook Simulator</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.2/axios.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dayjs/1.11.10/dayjs.min.js"></script>
     <style>
@@ -15,6 +15,7 @@
         input, select { width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
         button { width: 100%; padding: 12px; background: #3182ce; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; margin-top: 10px; }
         button:hover { background: #2b6cb0; }
+        button:disabled { background: #cbd5e0; cursor: not-allowed; }
         .history { margin-top: 25px; border-top: 1px solid #edf2f7; padding-top: 15px; }
         .history-item { font-size: 12px; padding: 8px; border-bottom: 1px solid #f7fafc; display: flex; justify-content: space-between; align-items: center; }
         .status-tag { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: bold; }
@@ -26,7 +27,7 @@
 <body>
 
 <div class="container">
-    <h1>🚀 ShipStation API Webhook Simulator</h1>
+    <h1>🚀 ShipStation V2 Webhook Simulator</h1>
     <div class="info-box">
         <strong>Required:</strong> Activate <a href="https://cors-anywhere.herokuapp.com/corsdemo" target="_blank">CORS Anywhere</a> first.
     </div>
@@ -38,7 +39,7 @@
 
     <div class="form-group">
         <label>Tracking Number</label>
-        <input type="text" id="tracking_number" value="SHIP-77889900">
+        <input type="text" id="tracking_number" value="SHIP-V2-TRACK">
     </div>
 
     <div class="form-group">
@@ -46,7 +47,7 @@
         <select id="carrier">
             <option value="fedex">FedEx</option>
             <option value="ups">UPS</option>
-            <option value="usps">USPS</option>
+            <option value="usps">USPS (Stamps.com)</option>
         </select>
     </div>
 
@@ -60,39 +61,54 @@
         </select>
     </div>
 
-    <button id="send-btn" onclick="fireWebhook()">Fire Webhook 🔥</button>
+    <button id="send-btn" onclick="fireWebhook()">Fire V2 Webhook 🔥</button>
     <div class="history"><div id="log-list"></div></div>
 </div>
 
 <script>
     const CARRIERS = {
         fedex: {
+            id: 4, code: "fedex",
+            urlTemplate: (n) => `https://www.fedex.com/fedextrack/?action=track&trackingnumber=${n}`,
             events: [
-                { description: "Delivered", event_code: "DL", status_code: "DE", hour_offset: 0, city: "MISSISSAUGA", state: "ON", lat: 43.68, lng: -79.66 },
-                { description: "Address correction required", event_code: "Undeliverable", status_code: "EX", hour_offset: -1, city: "MISSISSAUGA", state: "ON", lat: 43.68, lng: -79.66 },
-                { description: "Left FedEx origin facility", event_code: "DP", status_code: "IT", hour_offset: -4, city: "WOODBRIDGE", state: "ON", lat: 43.82, lng: -79.59 },
-                { description: "Picked up", event_code: "PU", status_code: "AC", hour_offset: -24, city: null, state: null, lat: null, lng: null }
+                { description: "Delivered", event_code: "DL", status_code: "DE", hour_offset: 0, city: "Kingston", state: "ON" },
+                { description: "Address correction required - resolution in progress", event_code: "Undeliverable", status_code: "EX", hour_offset: -1, city: "MISSISSAUGA", state: "ON" },
+                { description: "Left FedEx origin facility", event_code: "DP", status_code: "IT", hour_offset: -4, city: "WOODBRIDGE", state: "ON" },
+                { description: "Shipment information sent to FedEx", event_code: "OC", status_code: "AC", hour_offset: -24, city: null, state: null }
             ]
         },
         ups: {
+            id: 3, code: "ups",
+            urlTemplate: (n) => `http://wwwapps.ups.com/WebTracking/processRequest?HTMLVersion=5.0&Requester=NES&AgreeToTermsAndConditions=yes&loc=en_US&tracknum=${n}`,
             events: [
-                { description: "Delivered", event_code: "D", status_code: "DE", hour_offset: 0, city: "ATLANTA", state: "GA", lat: 33.74, lng: -84.38 },
-                { description: "Exception: Weather Delay", event_code: "X", status_code: "EX", hour_offset: -2, city: "MEMPHIS", state: "TN", lat: 35.14, lng: -90.04 },
-                { description: "Out For Delivery", event_code: "I", status_code: "IT", hour_offset: -6, city: "ATLANTA", state: "GA", lat: 33.74, lng: -84.38 },
-                { description: "Shipped", event_code: "M", status_code: "AC", hour_offset: -36, city: "DALLAS", state: "TX", lat: 32.77, lng: -96.79 }
+                { description: "Delivered", event_code: "D", status_code: "DE", hour_offset: 0, city: "OWINGS MILLS", state: "MD" },
+                { description: "UPS has returned your package to the sender.", event_code: "D", status_code: "EX", hour_offset: -2, city: "Sparks", state: "MD" },
+                { description: "Out For Delivery Today", event_code: "I", status_code: "IT", hour_offset: -6, city: "Sparks", state: "MD" },
+                { description: "Shipper created a label", event_code: "M", status_code: "AC", hour_offset: -36, city: "", state: "" }
             ]
         },
         usps: {
+            id: 1, code: "stamps_com",
+            urlTemplate: (n) => `https://tools.usps.com/go/TrackConfirmAction?tLabels=${n}`,
             events: [
-                { description: "Delivered, In/At Mailbox", event_code: "01", status_code: "DE", hour_offset: 0, city: "NEW YORK", state: "NY", lat: 40.71, lng: -74.00 },
-                { description: "Delivery Exception - Held", event_code: "EX", status_code: "EX", hour_offset: -1, city: "NEW YORK", state: "NY", lat: 40.71, lng: -74.00 },
-                { description: "Out for Delivery", event_code: "OF", status_code: "IT", hour_offset: -5, city: "NEW YORK", state: "NY", lat: 40.71, lng: -74.00 },
-                { description: "Accepted at Facility", event_code: "OA", status_code: "AC", hour_offset: -48, city: "MIAMI", state: "FL", lat: 25.76, lng: -80.19 }
+                { description: "Delivered, In/At Mailbox", event_code: "01", status_code: "DE", hour_offset: 0, city: "CROCKETT", state: "CA" },
+                { description: "Forwarded", event_code: "06", status_code: "EX", hour_offset: -1, city: "OAKLAND", state: "CA" },
+                { description: "Out for Delivery", event_code: "OF", status_code: "IT", hour_offset: -5, city: "CROCKETT", state: "CA" },
+                { description: "Accepted at USPS Facility", event_code: "OA", status_code: "AC", hour_offset: -48, city: "HILLSBORO", state: "OR" }
             ]
         }
     };
 
     let log = [];
+
+    function addLog(c, success) {
+        log.unshift({ time: new Date().toLocaleTimeString(), carrier: c.carrierKey, status: c.status, success });
+        document.getElementById('log-list').innerHTML = log.map(l => `
+            <div class="history-item">
+                <span><strong>${l.time}</strong> ${l.carrier.toUpperCase()} [${l.status}]</span>
+                <span class="status-tag ${l.success ? 'success' : 'error'}">${l.success ? 'SENT' : 'ERR'}</span>
+            </div>`).join('');
+    }
 
     async function fireWebhook() {
         const btn = document.getElementById('send-btn');
@@ -100,25 +116,35 @@
         const proxyUrl = "https://cors-anywhere.herokuapp.com/";
         const finalUrl = proxyUrl + targetUrl;
 
-        if (!targetUrl) return alert("URL required.");
+        if (!targetUrl) {
+            alert("URL required.");
+            return;
+        }
+        
         btn.disabled = true;
 
         const config = {
-            carrier: document.getElementById('carrier').value,
+            carrierKey: document.getElementById('carrier').value,
             tracking: document.getElementById('tracking_number').value,
             status: document.getElementById('status').value
         };
 
         const now = dayjs();
-        const carrierData = CARRIERS[config.carrier];
-        const startIndex = carrierData.events.findIndex(e => e.status_code === config.status);
-        const historyEvents = carrierData.events.slice(startIndex);
+        const carrierInfo = CARRIERS[config.carrierKey];
+        const startIndex = carrierInfo.events.findIndex(e => e.status_code === config.status);
+        const historyEvents = carrierInfo.events.slice(startIndex);
         const refOffset = historyEvents[0].hour_offset;
-        const randomLabelId = Math.floor(100000000 + Math.random() * 900000000);
+        const randomLabelId = Math.floor(100000 + Math.random() * 900000);
 
         const processedEvents = historyEvents.map(ev => {
             const diffFromTarget = Math.abs(ev.hour_offset - refOffset);
             const eventTime = now.subtract(diffFromTarget, 'hour');
+            
+            let statusDesc = "Accepted";
+            if (ev.status_code === 'DE') statusDesc = "Delivered";
+            if (ev.status_code === 'IT') statusDesc = "In Transit";
+            if (ev.status_code === 'EX') statusDesc = "Exception";
+
             return {
                 occurred_at: eventTime.format(),
                 carrier_occurred_at: eventTime.format().split('+')[0],
@@ -126,68 +152,63 @@
                 city_locality: ev.city,
                 state_province: ev.state,
                 postal_code: ev.city ? "12345" : null,
-                country_code: ev.city ? "US" : null,
+                country_code: "US",
                 company_name: null,
-                signer: null,
+                // FIXED: Signer only for DE status
+                signer: ev.status_code === 'DE' ? "Authorized Receiver" : null,
                 event_code: ev.event_code,
-                event_description: ev.description,
                 carrier_detail_code: null,
                 status_code: ev.status_code,
+                status_description: statusDesc,
+                carrier_status_code: ev.event_code,
+                carrier_status_description: ev.description,
                 status_detail_code: null,
-                status_description: null,
                 status_detail_description: null,
                 proof_of_delivery_url: null,
-                latitude: ev.lat,
-                longitude: ev.lng
+                latitude: 34.05,
+                longitude: -118.24
             };
         });
 
         const payload = {
-            resource_url: `https://api.shipengine.com/v1/tracking?carrier_code=${config.carrier}&tracking_number=${config.tracking}`,
-            resource_type: "API_TRACK",
+            resource_url: `https://api.shipstation.com/v2/labels/ss-${randomLabelId}/track`,
+            resource_type: "TRACK_EVENT_V2",
             data: {
-                label_url: `https://api.shipengine.com/v1/labels/se-${randomLabelId}`,
                 tracking_number: config.tracking,
+                tracking_url: carrierInfo.urlTemplate(config.tracking),
                 status_code: config.status,
                 status_detail_code: null,
                 status_detail_description: null,
+                carrier_code: carrierInfo.code,
+                carrier_id: carrierInfo.id,
                 carrier_detail_code: null,
-                status_description: processedEvents[0].description,
-                carrier_status_code: processedEvents[0].event_code,
-                carrier_status_description: processedEvents[0].description,
-                ship_date: now.subtract(72, 'hour').format(),
-                estimated_delivery_date: config.status === 'DE' ? null : now.add(24, 'hour').format(),
+                status_description: processedEvents[0].status_description,
+                carrier_status_code: processedEvents[0].carrier_status_code,
+                carrier_status_description: processedEvents[0].carrier_status_description,
+                ship_date: now.subtract(48, 'hour').format(),
+                estimated_delivery_date: config.status === 'DE' ? null : now.add(48, 'hour').format(),
                 actual_delivery_date: config.status === 'DE' ? now.format() : null,
-                exception_description: config.status === 'EX' ? processedEvents[0].description : null,
+                exception_description: config.status === 'EX' ? processedEvents[0].carrier_status_description : null,
                 events: processedEvents
             }
         };
 
         try {
-            // Updated POST with Authentication Headers
             await axios.post(finalUrl, payload, { 
                 headers: { 
                     'X-Requested-With': 'XMLHttpRequest',
                     'x-shipengine-timestamp': Math.floor(Date.now() / 1000).toString(),
-                    'x-shipengine-rsa-sha256-signature': 'SIMULATED_SIGNATURE_BASE64_STRING',
-                    'x-shipengine-rsa-sha256-key-id': 'key_sim_123456789'
+                    'x-shipengine-rsa-sha256-signature': 'SIMULATED_V2_SIG',
+                    'x-shipengine-rsa-sha256-key-id': 'key_sim_123'
                 } 
             });
             addLog(config, true);
         } catch (err) {
-            console.error(err);
+            console.error("Fire Webhook Error:", err);
             addLog(config, false);
-        } finally { btn.disabled = false; }
-    }
-
-    function addLog(c, success) {
-        log.unshift({ time: new Date().toLocaleTimeString(), ...c, success });
-        document.getElementById('log-list').innerHTML = log.map(l => `
-            <div class="history-item">
-                <span><strong>${l.time}</strong> ${l.carrier.toUpperCase()} [${l.status}]</span>
-                <span class="status-tag ${l.success ? 'success' : 'error'}">${l.success ? 'SENT' : 'ERR'}</span>
-            </div>
-        `).join('');
+        } finally { 
+            btn.disabled = false; 
+        }
     }
 </script>
 </body>
