@@ -1,0 +1,17 @@
+{
+  "short_name": "SS Sim",
+  "name": "ShipStation V2 Webhook Simulator",
+  "icons": [
+    {
+      "src": "icon.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "./index.html",
+  "background_color": "#f0f2f5",
+  "display": "standalone",
+  "scope": "./",
+  "theme_color": "#3182ce"
+}
