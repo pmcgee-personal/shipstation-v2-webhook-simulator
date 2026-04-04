@@ -5,6 +5,14 @@ A browser-based utility designed to simulate high-fidelity **ShipStation V2** tr
 ## 🌐 Live Access
 **URL:** [https://pmcgee-personal.github.io/shipstation-v2-webhook-simulator/](https://pmcgee-personal.github.io/shipstation-v2-webhook-simulator/)
 
+📱 Mobile Installation (PWA)
+This simulator is a Progressive Web App, meaning you can install it on your phone's home screen without using an App Store:
+
+iOS (Safari): Tap the Share icon (square with up arrow) and select "Add to Home Screen."
+
+Android (Chrome): Tap the three dots in the top right and select "Install app" or "Add to Home screen."
+
+Desktop: Click the Install icon in the address bar of Chrome or Edge to run it as a standalone window.
 ## ⚡ Quick Start
 1. **Enable CORS Access:** Because this tool runs in the browser, you must visit [CORS Anywhere](https://cors-anywhere.herokuapp.com/corsdemo) and click **"Request temporary access"** to allow the simulator to send requests to your webhook URL.
 2. **Enter Target:** Paste your Webhook.site or API endpoint URL.
@@ -19,6 +27,9 @@ A browser-based utility designed to simulate high-fidelity **ShipStation V2** tr
     - **Status Descriptions**: Dynamically maps "Accepted", "In Transit", "Delivered", and "Exception".
     - **Carrier URLs**: Generates authentic tracking links specific to the selected carrier.
 - **Security Headers**: Includes simulated `x-shipengine` HMAC/RSA headers for signature verification testing.
+- **Offline Ready (Basic)**: Includes a Service Worker (sw.js) to meet PWA installation requirements.
+- **App Manifest**: Configured with a manifest.json for a native look and feel, including a custom app icon and theme colors.
+- **Mobile Optimized**: Uses a specific viewport meta-tag to prevent accidental zooming on mobile inputs.
 
 ## 📋 Requirement: CORS Anywhere
 To prevent "Cross-Origin" security blocks in your browser, this tool uses a proxy. If your webhooks aren't firing, ensure you have an active session at:
